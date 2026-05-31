@@ -47,6 +47,7 @@ public class LineDumbTest extends OpMode {
         multipleTelemetry.addData("Pose", follower.pose());
         DrivePowers hold = DrivePowers.zero();
         if (follower.state() != null) {
+            multipleTelemetry.addData("Heading", follower.state().motionState().pose().heading());
             if (follower.state().pathTracker() != null) {
                 multipleTelemetry.addData("Empty", follower.state().pathTracker().empty());
                 multipleTelemetry.addData("Is Following", follower.state().pathTracker().isFollowing());

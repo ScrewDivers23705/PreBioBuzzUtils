@@ -12,6 +12,8 @@ import com.pedropathing.math.Pose;
 import com.pedropathing.math.Vector2D;
 import com.pedropathing.utils.Utils;
 
+import static com.pedropathing.utils.Utils.Angle.normalizeSigned;
+
 public class DumbHold implements Algorithm {
     private final ForesightConfig config;
 
@@ -65,8 +67,8 @@ public class DumbHold implements Algorithm {
      */
     public double headingPower(FollowState state, double targetHeading) {
         double current = state.motionState().pose().heading();
-        double error = headingError(current, targetHeading);
-        return config.headingController.get().calculate(targetHeading, error);
+        double error = -headingError(current, targetHeading);
+        return config.headingController.get().calculate(0, error);
     }
 
     public DrivePowers getDrivePowers(Vector2D fieldRelativeDrivePower, FollowState state, double headingPower) {
@@ -77,7 +79,7 @@ public class DumbHold implements Algorithm {
     }
 
     public double headingError(double current, double target) {
-        return Utils.Angle.smallestDifference(current, target) * Utils.Angle.turnDirection(current, target);
+        return normalizeSigned(target - current);
     }
 
     public double getBrakingDisplacement(double velocity, double quad, double linear) {
