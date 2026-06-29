@@ -3,19 +3,14 @@ package org.firstinspires.ftc.teamcode.pedroPathing;
 import com.acmerobotics.dashboard.FtcDashboard;
 import com.acmerobotics.dashboard.config.Config;
 import com.acmerobotics.dashboard.telemetry.MultipleTelemetry;
-import com.pedropathing.drivetrain.DrivePowers;
 import com.pedropathing.follower.Follower;
 import com.pedropathing.math.Pose;
-import com.pedropathing.paths.Path;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 
 @Config
 @TeleOp
 public class HoldTest extends OpMode {
-    public static double DISTANCE = 24;
-
-    private Path line;
     private Follower follower;
     private MultipleTelemetry multipleTelemetry;
 
@@ -36,7 +31,7 @@ public class HoldTest extends OpMode {
     public void loop() {
         follower.update();
         multipleTelemetry.addData("Mode", follower.mode());
-        multipleTelemetry.addData("Idle?", follower.idle());
+        multipleTelemetry.addData("Holding?", follower.holding());
         multipleTelemetry.addData("Pose", follower.pose());
         multipleTelemetry.update();
     }

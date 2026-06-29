@@ -14,7 +14,7 @@ import static com.pedropathing.api.Paths.line;
 @Config
 @TeleOp
 public class LineTest extends OpMode {
-    public static double DISTANCE = 24;
+    public static double DISTANCE = 48;
     public double loops = 0, lastLoop = 0, loopTime = 0;
     private Path line1, line2;
     private boolean forward;
@@ -47,9 +47,13 @@ public class LineTest extends OpMode {
             loops = 0;
         }
 
+        double nanoBefore = System.nanoTime();
+
         follower.update();
 
-        if (follower.idle()) {
+        multipleTelemetry.addData("Calculation Nano Time", System.nanoTime() - nanoBefore);
+
+        if (!follower.following()) {
             if (forward) {
                 follower.follow(line2);
             } else {
@@ -60,7 +64,7 @@ public class LineTest extends OpMode {
 
         multipleTelemetry.addData("Loop Time Hz", 1000/loopTime);
         multipleTelemetry.addData("Mode", follower.mode());
-        multipleTelemetry.addData("Idle?", follower.idle());
+        multipleTelemetry.addData("Following?", follower.following());
         multipleTelemetry.addData("Pose", follower.pose());
         multipleTelemetry.update();
     }

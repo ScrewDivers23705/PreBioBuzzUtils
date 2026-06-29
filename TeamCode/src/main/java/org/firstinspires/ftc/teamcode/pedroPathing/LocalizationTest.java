@@ -36,7 +36,7 @@ public class LocalizationTest extends OpMode {
         follower.update();
         multipleTelemetry.addData("Loop Time Hz", 1000/loopTime);
         multipleTelemetry.addData("Mode", follower.mode());
-        multipleTelemetry.addData("Idle?", follower.idle());
+        multipleTelemetry.addData("Manual?", follower.manual());
         multipleTelemetry.addData("Pose", follower.pose());
         multipleTelemetry.update();
     }
