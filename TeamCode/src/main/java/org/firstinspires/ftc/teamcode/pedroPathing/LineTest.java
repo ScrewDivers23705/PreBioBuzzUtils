@@ -52,6 +52,7 @@ public class LineTest extends OpMode {
         follower.update();
 
         multipleTelemetry.addData("Calculation Nano Time", System.nanoTime() - nanoBefore);
+        multipleTelemetry.addData("Calculation Ms", 1e-6 * (System.nanoTime() - nanoBefore));
 
         if (!follower.following()) {
             if (forward) {
