@@ -37,6 +37,8 @@ import org.firstinspires.ftc.vision.opencv.ImageRegion;
 
 import java.util.List;
 
+import dev.frozenmilk.sinister.Sinister;
+
 /*
  * This OpMode illustrates how to use a video source (camera) to locate specifically colored regions.
  * This sample is targeted towards circular blobs. To see rectangles, look at ConceptVisionColorLocator_Rectangle
@@ -212,7 +214,7 @@ public class conceptVisionOpmode extends LinearOpMode {
             );
             ColorBlobLocatorProcessor.Util.filterByCriteria(
                     ColorBlobLocatorProcessor.BlobCriteria.BY_CIRCULARITY,
-                    0.01, 1, blobs);     /* filter out non-circular blobs.
+                    0.05, 1, blobs);     /* filter out non-circular blobs.
              * NOTE: You may want to adjust the minimum value depending on your use case.
              * Circularity values will be affected by shadows, and will therefore vary based
              * on the location of the camera on your robot and venue lighting. It is strongly
@@ -231,7 +233,6 @@ public class conceptVisionOpmode extends LinearOpMode {
 // 1. FIXED: Removed the "\n" which was breaking the Driver Station UI layout
             telemetry.addData("preview on/off", "... Camera Stream");
             telemetry.addLine("Circularity Radius Center");
-
                 // Display the Blob's data cleanly when available
             for (ColorBlobLocatorProcessor.Blob b : blobs) {
                 Circle circleFit = b.getCircle();
