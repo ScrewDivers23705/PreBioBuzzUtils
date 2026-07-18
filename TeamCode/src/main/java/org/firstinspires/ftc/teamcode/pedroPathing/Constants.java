@@ -7,13 +7,62 @@ import com.pedropathing.follower.FollowerConstants;
 import com.pedropathing.ftc.FollowerBuilder;
 import com.pedropathing.ftc.localization.Encoder;
 import com.pedropathing.ftc.localization.constants.TwoWheelConstants;
+import com.pedropathing.ftc.localization.localizers.TwoWheelLocalizer;
+import com.pedropathing.geometry.Pose;
 import com.pedropathing.paths.PathConstraints;
 import com.qualcomm.hardware.rev.RevHubOrientationOnRobot;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 import com.pedropathing.ftc.drivetrains.MecanumConstants;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
 
+import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
+import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
+import org.firstinspires.ftc.robotcore.external.navigation.Position;
+import org.firstinspires.ftc.robotcore.external.navigation.YawPitchRollAngles;
+import org.firstinspires.ftc.teamcode.utils.ApriltagVision;
+
+import java.util.HashMap;
+import java.util.HashSet;
+
 public class Constants {
+
+    public static TwoWheelLocalizer twoWheelLocalizer;
+    public static FusionLocalizer fusionLocalizer;
+    public static ApriltagVision apriltagVision;
+
+    public static FusionLocalizer getFusionLocalizer() { return fusionLocalizer; }
+    public static ApriltagVision getApriltagVision() { return apriltagVision; }
+
+    public static Follower createFusionFollower(HardwareMap hardwareMap) {
+        twoWheelLocalizer = new TwoWheelLocalizer(hardwareMap, localizerConstants);
+
+        fusionLocalizer = new FusionLocalizer(
+            twoWheelLocalizer,
+            new Pose(1.0,1.0,Math.toRadians(5)), //Initial unceartenty
+            new Pose(0.5,0.5,Math.toRadians(1)), // Process noise
+            new Pose(0.5,0.5,Math.toRadians(3)), // deafult vision variance
+            100
+        );
+        HashSet<Integer> ids = new HashSet<>();
+        ids.add(20);
+        ids.add(21);
+        ids.add(22);
+        apriltagVision = new ApriltagVision(
+                hardwareMap, "Webcam 1",
+                new Position(DistanceUnit.INCH,-2,13,0,0),
+                new YawPitchRollAngles(AngleUnit.DEGREES,0,0,0,0),
+                822,822,320,240,
+                ids
+        );
+
+        return new FollowerBuilder(followerConstants,hardwareMap)
+                .pathConstraints(pathConstraints)
+                .mecanumDrivetrain(driveConstants)
+                .setLocalizer(fusionLocalizer)
+                .build();
+    }
+
+
     public static FollowerConstants followerConstants = new FollowerConstants()
             .mass(12)
             .centripetalScaling(0)
