@@ -35,7 +35,7 @@ import java.util.Set;
 public final class ApriltagVision {
 
     // --- FTC Dashboard-tunable thresholds ---
-    public static double decisionMarginThreshold = 50;   // reject low-confidence detections below this
+    public static double decisionMarginThreshold = 70;   // reject low-confidence detections below this
     public static double baseVisionVarianceAt12in = 0.5; // measurement variance (in^2) at close range
     public static long assumedLatencyMs = 10;            // camera + pipeline delay to timestamp-correct for
 
@@ -140,7 +140,8 @@ public final class ApriltagVision {
         double x = detection.robotPose.getPosition().x;
         double y = detection.robotPose.getPosition().y;
         double heading = detection.robotPose.getOrientation().getYaw(AngleUnit.RADIANS);
-        return PoseConverter.pose2DToPose(new Pose2D(DistanceUnit.INCH,x, y, AngleUnit.RADIANS,heading),InvertedFTCCoordinates.INSTANCE).getAsCoordinateSystem(PedroCoordinates.INSTANCE);
+        Pose pedroPose = PoseConverter.pose2DToPose(new Pose2D(DistanceUnit.INCH,x, y, AngleUnit.RADIANS,heading),InvertedFTCCoordinates.INSTANCE).getAsCoordinateSystem(PedroCoordinates.INSTANCE);
+        return pedroPose;
     }
 
     /**
@@ -157,4 +158,6 @@ public final class ApriltagVision {
     public void close() {
         visionPortal.close();
     }
+
+
 }

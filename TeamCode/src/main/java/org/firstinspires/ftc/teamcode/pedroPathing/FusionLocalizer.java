@@ -104,6 +104,13 @@ public class FusionLocalizer implements Localizer {
         currentVelocity = deadReckoning.getVelocity();
 
         Pose rawPose = deadReckoning.getPose();
+        if (rawPose == null) {
+            // Dead-reckoning localizer hasn't produced a real reading yet (e.g. very first
+            // call before it's completed its own internal init cycle). Treat this tick as
+            // "no motion happened" rather than crashing - currentRawPose is never null, so
+            // compose(invert(x), x) below correctly yields an identity (zero) transform.
+            rawPose = currentRawPose;
+        }
         currentRelativeTransform = compose(invert(currentRawPose), rawPose);
 
         P = growUncertainty(P, currentPosition, currentVelocity, dt);
@@ -324,14 +331,32 @@ public class FusionLocalizer implements Localizer {
         }
     }
 
-    /** Matrix inverse via row reduction, returning null (rather than garbage) on a singular matrix. */
-    private static Matrix invert(Matrix matrix) {
-        if (matrix.getRows() != matrix.getColumns()) return null;
-        Matrix I = Matrix.identity(matrix.getRows());
-        Matrix[] reduced = Matrix.rref(matrix, I);
-        if (!reduced[0].equals(I)) return null;
-        return reduced[1];
+    /**
+     * Closed-form 3x3 matrix inverse via the cofactor/adjugate method, returning null on a
+     * truly singular (near-zero determinant) matrix. Deliberately avoids depending on
+     * Matrix.rref()/.equals() for singularity detection - unless Matrix specifically
+     * overrides .equals() with value comparison (most simple utility classes only inherit
+     * Object's reference equality), comparing two freshly-computed matrix instances with
+     * .equals() will essentially never be true, silently treating every matrix as singular
+     * and skipping every vision update permanently with no visible error.
+     */
+    private static Matrix invert(Matrix m) {
+        double a = m.get(0, 0), b = m.get(0, 1), c = m.get(0, 2);
+        double d = m.get(1, 0), e = m.get(1, 1), f = m.get(1, 2);
+        double g = m.get(2, 0), h = m.get(2, 1), i = m.get(2, 2);
+
+        double det = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g);
+        if (Math.abs(det) < 1e-12) return null;
+
+        double invDet = 1.0 / det;
+        double[][] inv = new double[][]{
+                {(e * i - f * h) * invDet, (c * h - b * i) * invDet, (b * f - c * e) * invDet},
+                {(f * g - d * i) * invDet, (a * i - c * g) * invDet, (c * d - a * f) * invDet},
+                {(d * h - e * g) * invDet, (b * g - a * h) * invDet, (a * e - b * d) * invDet}
+        };
+        return new Matrix(inv);
     }
+
 
     @Override
     public Pose getPose() {

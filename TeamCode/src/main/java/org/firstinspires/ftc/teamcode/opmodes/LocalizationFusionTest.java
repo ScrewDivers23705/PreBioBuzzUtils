@@ -26,8 +26,8 @@ public class LocalizationFusionTest extends LinearOpMode {
         apriltagVision = Constants.getApriltagVision();
 
         // Set a baseline zero-pose tracking starting point
-        follower.setStartingPose(new Pose(0, 0, 0));
-
+        follower.setStartingPose(new Pose(72, 72, 0));
+        follower.startTeleOpDrive();
         telemetry.addData("Status", "Initialized. Camera starting up...");
         telemetry.update();
 
@@ -36,10 +36,9 @@ public class LocalizationFusionTest extends LinearOpMode {
         while (opModeIsActive() && !isStopRequested()) {
             // Standard robot-centric TeleOp drive inputs to manually maneuver the robot
             // Mapping: Left Stick Y = Forward/Backward, Left Stick X = Strafe, Right Stick X = Turn
+
+            follower.setTeleOpDrive(-gamepad1.left_stick_y, -gamepad1.left_stick_x, -gamepad1.right_stick_x);
             follower.update();
-
-
-
             // 1. Update the Pedro follower state machine (this triggers your fusionLocalizer.update())
 
             // 2. Update the vision pipeline right after the localizer update
