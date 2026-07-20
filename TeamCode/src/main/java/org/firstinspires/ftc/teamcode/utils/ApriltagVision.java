@@ -2,14 +2,8 @@ package org.firstinspires.ftc.teamcode.utils;
 
 import android.util.Size;
 
-import com.pedropathing.ftc.InvertedFTCCoordinates;
-import com.pedropathing.ftc.PoseConverter;
-import com.pedropathing.geometry.PedroCoordinates;
 import com.pedropathing.geometry.Pose;
-
-import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
-import org.firstinspires.ftc.robotcore.external.navigation.Pose2D;
-import org.firstinspires.ftc.teamcode.pedroPathing.FusionLocalizer;
+import com.pedropathing.localization.Localizer;
 
 import com.qualcomm.robotcore.hardware.HardwareMap;
 import org.firstinspires.ftc.robotcore.external.Telemetry;
@@ -17,48 +11,72 @@ import org.firstinspires.ftc.robotcore.external.hardware.camera.WebcamName;
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.Position;
 import org.firstinspires.ftc.robotcore.external.navigation.YawPitchRollAngles;
+import org.firstinspires.ftc.teamcode.pedroPathing.FusionLocalizer;
 import org.firstinspires.ftc.vision.VisionPortal;
 import org.firstinspires.ftc.vision.apriltag.AprilTagDetection;
 import org.firstinspires.ftc.vision.apriltag.AprilTagProcessor;
 
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 
 /**
- * Owns the AprilTag camera pipeline and feeds accepted detections into a
- * KalmanFusionLocalizer. Call update(fusion) once per loop, after your
- * fusion localizer's own update() - detections are filtered by confidence
- * and tag ID, converted into Pedro's pose convention, and given a
- * distance-scaled measurement variance before being fused.
+ * Owns both the AprilTag camera pipeline and the FusionLocalizer that blends it with
+ * whatever dead-reckoning Localizer you pass in (your TwoWheelLocalizer). No Context,
+ * no other subsystem classes required - just plain HardwareMap and Telemetry, so it
+ * drops straight into a bare OpMode.
+ *
+ * Usage:
+ *   AprilTagLocalizer aprilTags = new AprilTagLocalizer(
+ *       hardwareMap, telemetry, twoWheelLocalizer, "Webcam 1",
+ *       cameraPosition, cameraOrientation, fx, fy, cx, cy
+ *   );
+ *
+ *   Follower follower = new FollowerBuilder(Constants.followerConstants, hardwareMap)
+ *       .mecanumDrivetrain(Constants.driveConstants)
+ *       .pathConstraints(Constants.pathConstraints)
+ *       .setLocalizer(aprilTags.getLocalizer())
+ *       .build();
+ *
+ *   // every loop:
+ *   follower.update();
+ *   aprilTags.update();
  */
-public final class ApriltagVision {
+public final class ApriltagVision implements AutoCloseable {
 
-    // --- FTC Dashboard-tunable thresholds ---
-    public static double decisionMarginThreshold = 70;   // reject low-confidence detections below this
-    public static double baseVisionVarianceAt12in = 0.5; // measurement variance (in^2) at close range
-    public static long assumedLatencyMs = 10;            // camera + pipeline delay to timestamp-correct for
+    public static int latencyMs = 10;
+    public static double decisionMarginThreshold = 50;
 
+    private final Telemetry telemetry;
     private final AprilTagProcessor processor;
+    private final FusionLocalizer fusion;
     private final VisionPortal visionPortal;
-    private final Set<Integer> acceptedTagIds; // null = accept every tag in your library
 
     /**
-     * @param hardwareMap               standard OpMode hardwareMap
-     * @param webcamName                name configured on the Robot Controller
-     * @param cameraPositionOnRobot     camera's position relative to the robot's tracking origin
-     * @param cameraOrientationOnRobot  camera's orientation relative to the robot
-     * @param fx,fy,cx,cy               lens intrinsics from your camera calibration
-     * @param acceptedTagIds            restrict fusion to these tag IDs (e.g. only field-fixed tags,
-     *                                  excluding any game-piece markers), or null to accept all.
-     *                                  Pass a HashSet, not a List - this is checked on every detection
-     *                                  every loop, and HashSet.contains() is O(1) versus a list scan.
+     * @param hardwareMap        standard OpMode hardwareMap
+     * @param telemetry          standard OpMode telemetry, for detection/margin logging
+     * @param deadReckoning      your TwoWheelLocalizer (or any other Localizer) providing
+     *                           the predict-step odometry that vision corrects
+     * @param webcamName         name configured on the Robot Controller (e.g. "Webcam 1")
+     * @param cameraPositionOnRobot    camera's position relative to your robot's tracking origin
+     * @param cameraOrientationOnRobot camera's orientation relative to your robot
+     * @param fx,fy,cx,cy        lens intrinsics from your camera's calibration
      */
-    public ApriltagVision(HardwareMap hardwareMap, String webcamName,
-                                   Position cameraPositionOnRobot, YawPitchRollAngles cameraOrientationOnRobot,
-                                   double fx, double fy, double cx, double cy,
-                                   Set<Integer> acceptedTagIds) {
-        this.acceptedTagIds = acceptedTagIds == null ? null : new HashSet<>(acceptedTagIds);
+    public ApriltagVision(HardwareMap hardwareMap, Telemetry telemetry, Localizer deadReckoning,
+                             String webcamName,
+                             Position cameraPositionOnRobot, YawPitchRollAngles cameraOrientationOnRobot,
+                             double fx, double fy, double cx, double cy) {
+        this.telemetry = telemetry;
+
+        // Starting point only - tune using the drift-then-correct test: jittery when a
+        // tag is visible means measurement variance (3rd arg) is too small; barely
+        // reacting to a clearly good tag read means it's too large, or process noise
+        // (2nd arg) is too small.
+        fusion = new FusionLocalizer(
+                deadReckoning,
+                new Pose(0.25, 0.25, Math.toRadians(2)),   // initial uncertainty
+                new Pose(1, 1, Math.toRadians(0.5) / 60),  // process noise
+                new Pose(2.0, 2.0, Math.toRadians(3)),     // default vision variance
+                100
+        );
 
         processor = new AprilTagProcessor.Builder()
                 .setCameraPose(cameraPositionOnRobot, cameraOrientationOnRobot)
@@ -73,91 +91,43 @@ public final class ApriltagVision {
                 .build();
     }
 
-    /** Call once per loop. Filters detections and fuses any that pass. */
-    public void update(FusionLocalizer fusion) {
-        update(fusion, null);
+    public Localizer getLocalizer() {
+        return fusion;
     }
 
-    /** Same as update(fusion), with optional telemetry for tuning decisionMarginThreshold live. */
-    public void update(FusionLocalizer fusion, Telemetry telemetry) {
-        // Skip entirely while the camera is still starting up - avoids doing work on
-        // a portal that isn't ready and avoids acting on stale/garbage first frames.
+    /** Call once per loop, after your Follower's own update(). */
+    public void update() {
         if (visionPortal.getCameraState() != VisionPortal.CameraState.STREAMING) {
-            return;
+            return; // camera still starting up - nothing usable yet
         }
 
         List<AprilTagDetection> detections = processor.getDetections();
-        if (detections.isEmpty()) return;
+        telemetry.addData("AprilTags/detections", detections.size());
 
-        long captureTime = System.nanoTime() - assumedLatencyMs * 1_000_000L;
-        if (telemetry != null) telemetry.addData("AprilTags/detections", detections.size());
+        long captureTime = System.nanoTime() - latencyMs * 1_000_000L;
 
         for (AprilTagDetection detection : detections) {
-            if (!isUsable(detection)) continue;
+            if (detection.metadata == null) continue;
+            telemetry.addData("AprilTags/" + detection.metadata.name + " margin", detection.decisionMargin);
+            if (detection.decisionMargin <= decisionMarginThreshold) continue;
+            if (detection.robotPose == null) continue;
 
-            if (telemetry != null) {
-                telemetry.addData("AprilTags/" + detection.metadata.name + " margin", detection.decisionMargin);
-            }
+            // Field-coordinate to Pedro-coordinate conversion - verify against your own
+            // field/season by placing the robot at a known pose next to a tag and
+            // comparing, as discussed: this offset assumes a standard 144" field with
+            // your Pedro origin at a corner.
+            Pose pose = new Pose(
+                    detection.robotPose.getPosition().y + 72,
+                    -detection.robotPose.getPosition().x + 72,
+                    detection.robotPose.getOrientation().getYaw(AngleUnit.RADIANS)
+            );
 
-            Pose pose = toPedroPose(detection);
-            double distanceInches = detection.ftcPose.range;
-            double variance = varianceFromDistance(distanceInches);
-
-            fusion.addMeasurement(
-                    pose,
-                    captureTime,
-                    new Pose(variance, variance, variance * 2)); // heading typically noisier than xy from a tag
+            fusion.addMeasurement(pose, captureTime);
         }
     }
 
-    /**
-     * Guards against every way a single bad or partial detection could otherwise crash
-     * the loop or feed garbage into the filter: missing tag metadata, a tag outside your
-     * accepted set, a low-confidence read, or a detection whose pose fields didn't
-     * actually resolve (can happen transiently even when metadata is present).
-     */
-    private boolean isUsable(AprilTagDetection detection) {
-        if (detection.metadata == null) return false;
-        if (acceptedTagIds != null && !acceptedTagIds.contains(detection.id)) return false;
-        if (detection.decisionMargin <= decisionMarginThreshold) return false;
-        if (detection.robotPose == null || detection.ftcPose == null) return false;
-        return true;
-    }
-
-    /**
-     * Converts an AprilTag detection's field-frame robot pose into Pedro's coordinate
-     * convention. THIS MAPPING IS SPECIFIC TO YOUR FIELD/ROBOT SETUP - the axis order,
-     * signs, and any origin offset here depend on how your tag library's field coordinates
-     * relate to Pedro's origin and axis directions, which differ by season/setup.
-     * <p>
-     * To derive your own version: place the robot at a known Pedro pose next to a visible
-     * tag, log both fusion.getPose() (before any vision correction) and detection.robotPose
-     * side by side, and solve for the rotation/offset that makes them agree. Repeat at a
-     * second, different pose to confirm.
-     */
-    private Pose toPedroPose(AprilTagDetection detection) {
-        // Placeholder identity-ish mapping - replace with your derived transform.
-        double x = detection.robotPose.getPosition().x;
-        double y = detection.robotPose.getPosition().y;
-        double heading = detection.robotPose.getOrientation().getYaw(AngleUnit.RADIANS);
-        Pose pedroPose = PoseConverter.pose2DToPose(new Pose2D(DistanceUnit.INCH,x, y, AngleUnit.RADIANS,heading),InvertedFTCCoordinates.INSTANCE).getAsCoordinateSystem(PedroCoordinates.INSTANCE);
-        return pedroPose;
-    }
-
-    /**
-     * Grows measurement variance with distance, since AprilTag pose accuracy degrades
-     * the farther and more oblique the tag is. Tune the reference distance/exponent by
-     * logging real detection jitter at a few known distances and fitting to it.
-     */
-    private static double varianceFromDistance(double distanceInches) {
-        double referenceDistance = 12.0;
-        double scale = distanceInches / referenceDistance;
-        return baseVisionVarianceAt12in * (1 + scale * scale);
-    }
-
+    @Override
     public void close() {
         visionPortal.close();
     }
-
-
 }
