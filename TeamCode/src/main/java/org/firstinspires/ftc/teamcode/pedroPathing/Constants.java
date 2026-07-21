@@ -29,7 +29,6 @@ public class Constants {
                 c.manualBrakeMode.set(true);
             }
     );
-
     static PinpointConfig pinpointConfig = new PinpointConfig(
             c -> {
                 c.name.set("p");
@@ -46,7 +45,7 @@ public class Constants {
 
     static ForesightConfig foresightConfig = new ForesightConfig(
             c -> {
-                c.translationalController.set(Controller.pid(.2,0,0));
+                c.translationalControlller.set(Controller.pid(.2,0,0));
                 c.headingController.set(Controller.pid(2, 0, 0.01));
                 c.linearBrakeCoefficients.set(Matrix.diag(0.0788, 0.0788));
                 c.quadraticBrakeCoefficients.set(Matrix.diag(.00191035, .00191035));
